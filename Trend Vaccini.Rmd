@@ -1,0 +1,560 @@
+---
+title: "Report Italian Vaccines"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r include = FALSE, message=FALSE, warning = FALSE}
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(tseries)) install.packages("tseries", repos = "http://cran.us.r-project.org")
+if(!require(gtools)) install.packages("gtools", repos = "http://cran.us.r-project.org")
+if(!require(sqldf)) install.packages("sqldf", repos = "http://cran.us.r-project.org")
+
+library(dplyr)
+library(gtools)
+library(tidyverse)
+library(ggplot2)
+library(tseries)
+library(sqldf)
+
+```
+
+## 1 Total non-vaccinated Population
+
+
+
+```{r include = FALSE, message=FALSE, warning = FALSE}
+
+url <- "https://github.com/AyrTraveler/Italian_Vaccination_Program/raw/main/italian_vaccination.csv"
+dat <- read_csv(url) %>% 
+  group_by(administration_date,region,supplier, region_name, age_range) %>% 
+  summarise(dose = first_dose, males = sum(males), females = sum(females))
+
+dat  <- dat %>% filter(administration_date > "2020-12-31")
+
+
+cumulativeSum = function(x){
+  
+  cumsum(ifelse(is.na(x),0,x))
+  
+}
+
+
+clean_set  =  dat %>%  group_by(administration_date, age_range) %>%
+  summarize(dose = sum(dose))
+clean_set <- clean_set %>% spread(age_range,dose)
+ADMIN_DATE <- as.data.frame(clean_set) %>% select(administration_date)
+clean_set <- as.data.frame(clean_set) %>% select(-administration_date)
+clean_set <- apply(as.matrix(clean_set),2,cumulativeSum)
+clean_set <- as.data.frame(clean_set)  %>% gather(age_range, dose, `12-19`:`90+`)
+clean_set <- data.frame(ADMIN_DATE,clean_set)
+
+first_set <- clean_set %>% 
+  group_by(age_range) %>% 
+  summarise(dose = max(dose)/1000000) %>%
+  summarise(dose = sum(dose)) %>%
+  mutate(population = 60.0)
+
+
+final_set <- first_set
+final_set <- final_set %>% 
+  mutate(difference = (population-dose)/population*100) %>% 
+  mutate(age_range = "") %>% 
+  mutate(Type = "First doses")
+
+dat <- read_csv(url) %>% 
+  group_by(administration_date,region,supplier, region_name, age_range) %>% 
+  summarise(dose = second_dose, males = sum(males), females = sum(females))
+
+dat  <- dat %>% filter(administration_date > "2020-12-31")
+
+
+cumulativeSum = function(x){
+  
+  cumsum(ifelse(is.na(x),0,x))
+  
+}
+
+
+clean_set  =  dat %>%  group_by(administration_date, age_range) %>%
+  summarize(dose = sum(dose))
+clean_set <- clean_set %>% spread(age_range,dose)
+ADMIN_DATE <- as.data.frame(clean_set) %>% select(administration_date)
+clean_set <- as.data.frame(clean_set) %>% select(-administration_date)
+clean_set <- apply(as.matrix(clean_set),2,cumulativeSum)
+clean_set <- as.data.frame(clean_set)  %>% gather(age_range, dose, `12-19`:`90+`)
+clean_set <- data.frame(ADMIN_DATE,clean_set)
+
+first_set <- clean_set %>% 
+  group_by(age_range) %>% 
+  summarise(dose = max(dose)/1000000) %>%
+  summarise(dose = sum(dose)) %>%
+  mutate(population = 60.0)
+
+
+temp_set <- first_set
+temp_set <- temp_set %>% 
+  mutate(difference = (population-dose)/population*100) %>% 
+  mutate(age_range = "") %>% 
+  mutate(Type = "Second doses")
+
+final_set <- bind_rows(final_set, temp_set)
+
+```
+
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+final_set %>% 
+  ggplot(aes(reorder(Type,difference) ,difference, label = round(population-dose,2))) +
+  geom_bar(stat="identity", position = position_dodge(), show.legend = TRUE, fill = "darkcyan", width = 0.3) +
+  geom_label(show.legend = FALSE) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y= "% Population that has not yet received the first/second dose", x = "") 
+
+
+```
+
+
+
+## 2 Non-vaccinated population by age range
+
+### 2.1 Non-vaccinated population by age range - First Doses
+
+
+```{r include = FALSE, message=FALSE, warning = FALSE}
+
+url <- "https://github.com/AyrTraveler/Italian_Vaccination_Program/raw/main/italian_vaccination.csv"
+dat <- read_csv(url) %>% 
+  group_by(administration_date,region,supplier, region_name, age_range) %>% 
+  summarise(dose = first_dose, males = sum(males), females = sum(females))
+
+dat  <- dat %>% filter(administration_date > "2020-12-31")
+
+
+cumulativeSum = function(x){
+  
+  cumsum(ifelse(is.na(x),0,x))
+  
+}
+
+
+clean_set  =  dat %>%  group_by(administration_date, age_range) %>%
+  summarize(dose = sum(dose))
+clean_set <- clean_set %>% spread(age_range,dose)
+ADMIN_DATE <- as.data.frame(clean_set) %>% select(administration_date)
+clean_set <- as.data.frame(clean_set) %>% select(-administration_date)
+clean_set <- apply(as.matrix(clean_set),2,cumulativeSum)
+clean_set <- as.data.frame(clean_set)  %>% gather(age_range, dose, `12-19`:`90+`)
+clean_set <- data.frame(ADMIN_DATE,clean_set)
+
+first_set <- clean_set %>% 
+  filter(!(age_range %in% c('70-79','80-89','90+'))) %>% 
+  group_by(age_range) %>% 
+  summarise(dose = max(dose)/1000000) %>%
+  mutate( population =
+            case_when(
+              
+              age_range == "12-19" ~ 4.635324714,
+              age_range == "20-29" ~ 6.720621333,
+              age_range == "30-39" ~ 7.1803445,
+              age_range == "40-49" ~ 8.792986,
+              age_range == "50-59" ~ 9.113997,
+              age_range == "60-69" ~ 7.6751905
+              
+            ))
+
+second_set <- clean_set %>% 
+  filter(age_range %in% c('70-79','80-89','90+')) %>% 
+  group_by(age_range) %>% 
+  summarise(dose = max(dose)/1000000) %>% 
+  mutate(age_range= ">70") %>% 
+  group_by(age_range) %>% 
+  summarize(dose = sum(dose)) %>% 
+  mutate(population = 10.5243685)
+  
+
+final_set <- bind_rows(first_set,second_set)
+final_set <- final_set %>% mutate(difference = (population-dose)/population*100)
+
+third_set <- clean_set %>% 
+  filter(!(age_range %in% c('70-79','80-89','90+'))) %>% 
+    mutate( population =
+            case_when(
+              
+              age_range == "12-19" ~ 4.635324714,
+              age_range == "20-29" ~ 6.720621333,
+              age_range == "30-39" ~ 7.1803445,
+              age_range == "40-49" ~ 8.792986,
+              age_range == "50-59" ~ 9.113997,
+              age_range == "60-69" ~ 7.6751905
+              
+            ))
+
+fourth_set <- clean_set %>% 
+  filter(age_range %in% c('70-79','80-89','90+')) %>% 
+  mutate(age_range= ">70") %>% 
+  group_by(administration_date,age_range) %>% 
+  summarise(dose = sum(dose)) %>% 
+  mutate(population = 10.5243685)
+
+
+
+trend_set <- bind_rows(third_set,fourth_set)
+trend_set <- trend_set %>% mutate(difference = (population-dose/1000000)/population*100)
+
+pivot <- trend_set %>% group_by(age_range) %>% summarise(min_diff = min(difference))
+trend_set <- sqldf('
+                   SELECT T.*,P.min_diff
+                   FROM trend_set T
+                   LEFT JOIN pivot P
+                   ON T.age_range = P.age_range
+                   AND T.difference = P.min_diff
+                   
+                   ')
+
+
+```
+
+The plot shows percentage/millions of people that have not yet received the first vaccine shot, by age range:
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+final_set %>% 
+  ggplot(aes(reorder(age_range,difference) ,difference, label = round(population-dose,2))) +
+  geom_bar(stat="identity", position = position_dodge(), show.legend = TRUE, fill = "darkcyan", width = 0.7) +
+  geom_label(show.legend = FALSE) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y= "% Population that has not yet received the first dose", x = "Age Range") 
+
+
+```
+
+The plot shows the trend of the percentage of population who has not yet received the first vaccine shot, by age range:
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+
+trend_set %>% 
+  ggplot(aes(administration_date,difference, label = round(min_diff,1))) +
+  geom_point(size = 0.2, color = "darkcyan") +
+  geom_label(show.legend = FALSE, size = 3)+
+  facet_wrap(~age_range) +
+  scale_y_continuous(position = "right") +
+  theme(legend.position = "left") +
+  theme_minimal()+
+  labs(y= "Remaining doses [%]", x = "") 
+
+
+```
+
+
+### 2.2 Non-vaccinated population by age range - Second Doses
+
+
+```{r include = FALSE, message=FALSE, warning = FALSE}
+
+url <- "https://github.com/AyrTraveler/Italian_Vaccination_Program/raw/main/italian_vaccination.csv"
+dat <- read_csv(url) %>% 
+  group_by(administration_date,region,supplier, region_name, age_range) %>% 
+  summarise(dose = second_dose, males = sum(males), females = sum(females))
+
+dat  <- dat %>% filter(administration_date > "2020-12-31")
+
+
+cumulativeSum = function(x){
+  
+  cumsum(ifelse(is.na(x),0,x))
+  
+}
+
+
+clean_set  =  dat %>%  group_by(administration_date, age_range) %>%
+  summarize(dose = sum(dose))
+clean_set <- clean_set %>% spread(age_range,dose)
+ADMIN_DATE <- as.data.frame(clean_set) %>% select(administration_date)
+clean_set <- as.data.frame(clean_set) %>% select(-administration_date)
+clean_set <- apply(as.matrix(clean_set),2,cumulativeSum)
+clean_set <- as.data.frame(clean_set)  %>% gather(age_range, dose, `12-19`:`90+`)
+clean_set <- data.frame(ADMIN_DATE,clean_set)
+
+first_set <- clean_set %>% 
+  filter(!(age_range %in% c('70-79','80-89','90+'))) %>% 
+  group_by(age_range) %>% 
+  summarise(dose = max(dose)/1000000) %>%
+  mutate( population =
+            case_when(
+              
+              age_range == "12-19" ~ 4.635324714,
+              age_range == "20-29" ~ 6.720621333,
+              age_range == "30-39" ~ 7.1803445,
+              age_range == "40-49" ~ 8.792986,
+              age_range == "50-59" ~ 9.113997,
+              age_range == "60-69" ~ 7.6751905
+              
+            ))
+
+second_set <- clean_set %>% 
+  filter(age_range %in% c('70-79','80-89','90+')) %>% 
+  group_by(age_range) %>% 
+  summarise(dose = max(dose)/1000000) %>% 
+  mutate(age_range= ">70") %>% 
+  group_by(age_range) %>% 
+  summarize(dose = sum(dose)) %>% 
+  mutate(population = 10.5243685)
+  
+
+final_set <- bind_rows(first_set,second_set)
+final_set <- final_set %>% mutate(difference = (population-dose)/population*100)
+
+third_set <- clean_set %>% 
+  filter(!(age_range %in% c('70-79','80-89','90+'))) %>% 
+    mutate( population =
+            case_when(
+              
+              age_range == "12-19" ~ 4.635324714,
+              age_range == "20-29" ~ 6.720621333,
+              age_range == "30-39" ~ 7.1803445,
+              age_range == "40-49" ~ 8.792986,
+              age_range == "50-59" ~ 9.113997,
+              age_range == "60-69" ~ 7.6751905
+              
+            ))
+
+fourth_set <- clean_set %>% 
+  filter(age_range %in% c('70-79','80-89','90+')) %>% 
+  mutate(age_range= ">70") %>% 
+  group_by(administration_date,age_range) %>% 
+  summarise(dose = sum(dose)) %>% 
+  mutate(population = 10.5243685)
+
+
+
+trend_set <- bind_rows(third_set,fourth_set)
+trend_set <- trend_set %>% mutate(difference = (population-dose/1000000)/population*100)
+
+pivot <- trend_set %>% group_by(age_range) %>% summarise(min_diff = min(difference))
+trend_set <- sqldf('
+                   SELECT T.*,P.min_diff
+                   FROM trend_set T
+                   LEFT JOIN pivot P
+                   ON T.age_range = P.age_range
+                   AND T.difference = P.min_diff
+                   
+                   ')
+
+
+
+```
+
+The plot shows percentage/millions of people that have not yet received the second vaccine shot, by age range:
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+final_set %>% 
+  ggplot(aes(reorder(age_range,difference) ,difference, label = round(population-dose,2))) +
+  geom_bar(stat="identity", position = position_dodge(), show.legend = TRUE, fill = "darkcyan", width = 0.7) +
+  geom_label(show.legend = FALSE) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y= "% Population that has not yet received the first dose", x = "Age Range") 
+
+
+```
+
+The plot shows the trend of the percentage of population who has not yet received the second vaccine shot, by age range:
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+
+trend_set %>% 
+  ggplot(aes(administration_date,difference, label = round(min_diff,1))) +
+  geom_point(size = 0.2, color = "darkcyan") +
+  geom_label(show.legend = FALSE, size = 3)+
+  facet_wrap(~age_range) +
+  scale_y_continuous(position = "right") +
+  theme(legend.position = "left") +
+  theme_minimal()+
+  labs(y= "Remaining doses [%]", x = "") 
+
+
+```
+
+
+## Non-vaccinated population by region
+
+### 3.1 Non-vaccinated population by region - First Doses
+
+
+```{r include = FALSE, message=FALSE, warning = FALSE}
+
+url <- "https://github.com/AyrTraveler/Italian_Vaccination_Program/raw/main/italian_vaccination.csv"
+dat <- read_csv(url)
+first <- dat %>% 
+  group_by(administration_date,region,supplier, region_name, age_range) %>% 
+  summarise(dose = first_dose, males = sum(males), females = sum(females)) %>% 
+  filter(administration_date > "2020-12-31") %>% 
+  group_by(region) %>% 
+  summarize(dose = sum(dose)) %>% 
+  mutate( population =
+            case_when(
+              
+              region == "ABR" ~ 1.293941,
+              region == "BAS" ~ 0.553254,
+              region == "CAL" ~ 1.894110,
+              region == "CAM" ~ 5.712143,
+              region == "EMR" ~ 4.464119,
+              region == "FVG" ~ 1.206216,
+              region == "LAZ" ~ 5.755700,
+              region == "LIG" ~ 1.524826,
+              region == "LOM" ~ 10.027602,
+              region == "MAR" ~ 1.512672,
+              region == "MOL" ~ 0.300516,
+              region == "PAB" ~ 0.533349,
+              region == "PAT" ~ 0.545497,
+              region == "PIE" ~ 4.311217,
+              region == "PUG" ~ 3.953305,
+              region == "SAR" ~ 1.611621,
+              region == "SIC" ~ 4.875290,
+              region == "TOS" ~ 3.692555,
+              region == "UMB" ~ 0.870165,
+              region == "VDA" ~ 0.125034,
+              region == "VEN" ~ 4.879133,
+              
+            ),
+          dose = dose/1000000,
+          difference = (population-dose)/population*100
+  ) %>%
+   mutate(difference = round(difference,2))
+
+day_span <- 7
+second <- dat  %>%
+  group_by(region) %>% 
+  summarize(max_date =max(administration_date))  %>% 
+  select(region,max_date)
+
+third <- 
+  dat %>% left_join(second, by = "region") %>% 
+  filter(administration_date >= as.Date(max_date) - day_span & administration_date <= as.Date(max_date)) %>% 
+  group_by(region) %>% 
+  summarize(administration_date = max(administration_date), speed =sum(first_dose)/day_span/1e6 ) %>% 
+  left_join(first, by = "region") %>% 
+  mutate(final_date = as.Date(administration_date) + round((population-dose)/speed,0)) %>% 
+  select(region,final_date)
+
+third <- third[order(third$final_date),]
+
+
+```
+
+The plot shows percentage/millions of people that have not yet received the first vaccine shot, by region:
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+first %>% 
+  ggplot(aes(reorder(region,difference) ,difference, label = round(population-dose,2))) +
+  geom_bar(stat="identity", position = position_dodge(), show.legend = TRUE, fill = "darkcyan", width = 0.7) +
+  geom_label(show.legend = FALSE) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y= "% Population that has not yet received the first dose", x = "Region") 
+
+
+```
+
+The final date is an ideal scenario that tells when the first dose vaccination will be completed, by region, assuming the most recent weekly average first dose vaccination rate to be constant:
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+knitr::kable(third)
+
+```
+
+
+### 3.2 Non-vaccinated population by region - Second Doses
+
+
+```{r include = FALSE, message=FALSE, warning = FALSE}
+
+url <- "https://github.com/AyrTraveler/Italian_Vaccination_Program/raw/main/italian_vaccination.csv"
+first <- read_csv(url) %>% 
+  group_by(administration_date,region,supplier, region_name, age_range) %>% 
+  summarise(dose = second_dose, males = sum(males), females = sum(females)) %>% 
+  filter(administration_date > "2020-12-31") %>% 
+  group_by(region) %>% 
+  summarize(dose = sum(dose)) %>% 
+  mutate( population =
+            case_when(
+              
+              region == "ABR" ~ 1.293941,
+              region == "BAS" ~ 0.553254,
+              region == "CAL" ~ 1.894110,
+              region == "CAM" ~ 5.712143,
+              region == "EMR" ~ 4.464119,
+              region == "FVG" ~ 1.206216,
+              region == "LAZ" ~ 5.755700,
+              region == "LIG" ~ 1.524826,
+              region == "LOM" ~ 10.027602,
+              region == "MAR" ~ 1.512672,
+              region == "MOL" ~ 0.300516,
+              region == "PAB" ~ 0.533349,
+              region == "PAT" ~ 0.545497,
+              region == "PIE" ~ 4.311217,
+              region == "PUG" ~ 3.953305,
+              region == "SAR" ~ 1.611621,
+              region == "SIC" ~ 4.875290,
+              region == "TOS" ~ 3.692555,
+              region == "UMB" ~ 0.870165,
+              region == "VDA" ~ 0.125034,
+              region == "VEN" ~ 4.879133,
+              
+            ),
+          dose = dose/1000000,
+          difference = (population-dose)/population*100
+  ) %>%
+   mutate(difference = round(difference,2))
+
+
+day_span <- 7
+second <- dat  %>%
+  group_by(region) %>% 
+  summarize(max_date =max(administration_date))  %>% 
+  select(region,max_date)
+
+third <- 
+  dat %>% left_join(second, by = "region") %>% 
+  filter(administration_date >= as.Date(max_date) - day_span & administration_date <= as.Date(max_date)) %>% 
+  group_by(region) %>% 
+  summarize(administration_date = max(administration_date), speed =sum(second_dose)/day_span/1e6 ) %>% 
+  left_join(first, by = "region") %>% 
+  mutate(final_date = as.Date(administration_date) + round((population-dose)/speed,0)) %>% 
+  select(region,final_date)
+
+third <- third[order(third$final_date),]
+
+
+```
+
+
+The plot shows percentage/millions of people that have not yet received the second vaccine shot, by region:
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+first %>% 
+  ggplot(aes(reorder(region,difference) ,difference, label = round(population-dose,2))) +
+  geom_bar(stat="identity", position = position_dodge(), show.legend = TRUE, fill = "darkcyan", width = 0.7) +
+  geom_label(show.legend = FALSE) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y= "% Population that has not yet received the first dose", x = "Region") 
+
+
+```
+
+The final date is an ideal scenario that tells when the second dose vaccination will be completed, by region, assuming the most recent weekly average second dose vaccination rate to be constant:
+
+```{r echo= FALSE, message=FALSE, warning = FALSE}
+knitr::kable(third)
+
+```
